@@ -18,6 +18,12 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
+        env:
+        - name: APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: platform-api-config
+              key: APP_ENV
         readinessProbe:
           httpGet:
             path: /health
