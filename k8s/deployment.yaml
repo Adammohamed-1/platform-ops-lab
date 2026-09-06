@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: platform-api
-        image: platform-ops-lab:0.1
+        image: 854575157169.dkr.ecr.eu-west-2.amazonaws.com/platform-ops-lab:0.1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
