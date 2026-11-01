@@ -28,6 +28,50 @@ jobs:
       - name: Build Docker image
         run: docker build --platform linux/amd64 -t platform-ops-lab:ci ./app
 
+      # A build can succeed even if the application cannot start or serve requests.
+      - name: Smoke test running container
+        run: |
+          set -euo pipefail
+          docker run --detach --name platform-api-smoke \
+            --publish 127.0.0.1:8080:8080 \
+            --env APP_ENV=ci \
+            platform-ops-lab:ci
+
+          # Give Flask time to start instead of assuming it is instantly ready.
+          curl --fail --silent --show-error \
+            --retry 12 --retry-connrefused --retry-delay 2 --max-time 3 \
+            --output health-response.json \
+            http://127.0.0.1:8080/health
+
+          curl --fail --silent --show-error \
+            --output index-response.json \
+            http://127.0.0.1:8080/
+
+          python - <<'PY'
+          import json
+
+          with open("health-response.json", encoding="utf-8") as response:
+              assert json.load(response) == {"status": "ok"}, "Unexpected /health response"
+
+          with open("index-response.json", encoding="utf-8") as response:
+              app = json.load(response)
+          assert app.get("service") == "platform-ops-lab", "Unexpected service response"
+          assert app.get("environment") == "ci", "APP_ENV not set in container"
+          print("Application smoke tests passed")
+          PY
+
+      - name: Show container diagnostics if a check fails
+        if: failure()
+        run: |
+          docker ps -a --filter name=platform-api-smoke
+          if docker container inspect platform-api-smoke >/dev/null 2>&1; then
+            docker logs platform-api-smoke
+          fi
+
+      - name: Clean up smoke-test container
+        if: always()
+        run: docker rm --force platform-api-smoke || true
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
 
