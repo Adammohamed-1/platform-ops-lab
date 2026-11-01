@@ -36,6 +36,35 @@ curl http://localhost:8080/
 curl http://localhost:8080/health
 ```
 
+## Automated CI checks and container smoke test
+
+The [GitHub Actions workflow](.github/workflows/ci.yml) runs for pushes to `main`
+and pull requests targeting `main`. It checks Python syntax, builds the Docker
+image, validates Terraform formatting/configuration, and **starts the built
+container** to check that the Flask application actually responds.
+
+The smoke test:
+1. Runs the image with `APP_ENV=ci` and binds its port only to localhost on the CI runner.
+2. Waits for `GET /health` to return HTTP 200 and JSON `{"status":"ok"}`.
+3. Requests `GET /` and verifies the application identifies itself as
+   `platform-ops-lab` running in the `ci` environment.
+4. Prints the container logs on failure and removes the test container even if
+   a check fails.
+
+To try the same idea locally from the repository root:
+
+```bash
+docker build --platform linux/amd64 -t platform-ops-lab:ci ./app
+docker run -d --name platform-api-smoke -p 127.0.0.1:8080:8080 -e APP_ENV=ci platform-ops-lab:ci
+curl -i http://127.0.0.1:8080/health
+curl -i http://127.0.0.1:8080/
+docker rm -f platform-api-smoke
+```
+
+This is an automated **smoke test**, not a complete test suite or deployment
+pipeline: it does not deploy to EKS, test Kubernetes networking, or prove all
+business behaviour is correct.
+
 ## Create the AWS infrastructure
 
 ```bash
