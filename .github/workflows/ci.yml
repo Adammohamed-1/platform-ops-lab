@@ -37,11 +37,21 @@ jobs:
             --env APP_ENV=ci \
             platform-ops-lab:ci
 
-          # Give Flask time to start instead of assuming it is instantly ready.
-          curl --fail --silent --show-error \
-            --retry 12 --retry-connrefused --retry-delay 2 --max-time 3 \
-            --output health-response.json \
-            http://127.0.0.1:8080/health
+          # Wait for readiness: a new process may refuse or reset early requests.
+          ready=0
+          for attempt in {1..15}; do
+            if curl --fail --silent --show-error --max-time 3 \
+              --output health-response.json http://127.0.0.1:8080/health; then
+              ready=1
+              break
+            fi
+            echo "Application not ready yet (attempt $attempt/15)"
+            sleep 2
+          done
+          if [[ "$ready" != 1 ]]; then
+            echo "::error::Application health endpoint did not become ready"
+            exit 1
+          fi
 
           curl --fail --silent --show-error \
             --output index-response.json \
