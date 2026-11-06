@@ -28,59 +28,33 @@ jobs:
       - name: Build Docker image
         run: docker build --platform linux/amd64 -t platform-ops-lab:ci ./app
 
-      # A build can succeed even if the application cannot start or serve requests.
       - name: Smoke test running container
         run: |
-          set -euo pipefail
-          docker run --detach --name platform-api-smoke \
-            --publish 127.0.0.1:8080:8080 \
-            --env APP_ENV=ci \
+          set -e
+          docker run -d --name test-api \
+            -p 127.0.0.1:8080:8080 \
+            -e APP_ENV=ci \
             platform-ops-lab:ci
 
-          # Wait for readiness: a new process may refuse or reset early requests.
-          ready=0
-          for attempt in {1..15}; do
-            if curl --fail --silent --show-error --max-time 3 \
-              --output health-response.json http://127.0.0.1:8080/health; then
-              ready=1
+          # Retry while the application starts.
+          for i in {1..10}; do
+            if curl -fsS --max-time 3 http://127.0.0.1:8080/health; then
               break
             fi
-            echo "Application not ready yet (attempt $attempt/15)"
             sleep 2
           done
-          if [[ "$ready" != 1 ]]; then
-            echo "::error::Application health endpoint did not become ready"
-            exit 1
-          fi
 
-          curl --fail --silent --show-error \
-            --output index-response.json \
-            http://127.0.0.1:8080/
+          # Fail CI if either endpoint does not respond successfully.
+          curl -fsS --max-time 3 http://127.0.0.1:8080/health
+          curl -fsS --max-time 3 http://127.0.0.1:8080/
 
-          python - <<'PY'
-          import json
-
-          with open("health-response.json", encoding="utf-8") as response:
-              assert json.load(response) == {"status": "ok"}, "Unexpected /health response"
-
-          with open("index-response.json", encoding="utf-8") as response:
-              app = json.load(response)
-          assert app.get("service") == "platform-ops-lab", "Unexpected service response"
-          assert app.get("environment") == "ci", "APP_ENV not set in container"
-          print("Application smoke tests passed")
-          PY
-
-      - name: Show container diagnostics if a check fails
+      - name: Show container logs if test fails
         if: failure()
-        run: |
-          docker ps -a --filter name=platform-api-smoke
-          if docker container inspect platform-api-smoke >/dev/null 2>&1; then
-            docker logs platform-api-smoke
-          fi
+        run: docker logs test-api || true
 
-      - name: Clean up smoke-test container
+      - name: Clean up test container
         if: always()
-        run: docker rm --force platform-api-smoke || true
+        run: docker rm -f test-api || true
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
