@@ -28,6 +28,34 @@ jobs:
       - name: Build Docker image
         run: docker build --platform linux/amd64 -t platform-ops-lab:ci ./app
 
+      - name: Smoke test running container
+        run: |
+          set -e
+          docker run -d --name test-api \
+            -p 127.0.0.1:8080:8080 \
+            -e APP_ENV=ci \
+            platform-ops-lab:ci
+
+          # Retry while the application starts.
+          for i in {1..10}; do
+            if curl -fsS --max-time 3 http://127.0.0.1:8080/health; then
+              break
+            fi
+            sleep 2
+          done
+
+          # Fail CI if either endpoint does not respond successfully.
+          curl -fsS --max-time 3 http://127.0.0.1:8080/health
+          curl -fsS --max-time 3 http://127.0.0.1:8080/
+
+      - name: Show container logs if test fails
+        if: failure()
+        run: docker logs test-api || true
+
+      - name: Clean up test container
+        if: always()
+        run: docker rm -f test-api || true
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
 
