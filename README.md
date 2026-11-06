@@ -45,20 +45,21 @@ container** to check that the Flask application actually responds.
 
 The smoke test:
 1. Runs the image with `APP_ENV=ci` and binds its port only to localhost on the CI runner.
-2. Waits for `GET /health` to return HTTP 200 and JSON `{"status":"ok"}`.
-3. Requests `GET /` and verifies the application identifies itself as
-   `platform-ops-lab` running in the `ci` environment.
-4. Prints the container logs on failure and removes the test container even if
-   a check fails.
+2. Retries `GET /health` up to 10 times while the application starts.
+3. Checks `/health` and `/` with `curl -fsS`. CI fails if either endpoint is
+   unreachable or returns an HTTP error.
+4. Prints container logs on failure and removes the test container even if a check fails.
+
+This simpler test checks HTTP success, not the JSON response body.
 
 To try the same idea locally from the repository root:
 
 ```bash
 docker build --platform linux/amd64 -t platform-ops-lab:ci ./app
-docker run -d --name platform-api-smoke -p 127.0.0.1:8080:8080 -e APP_ENV=ci platform-ops-lab:ci
+docker run -d --name test-api -p 127.0.0.1:8080:8080 -e APP_ENV=ci platform-ops-lab:ci
 curl -i http://127.0.0.1:8080/health
 curl -i http://127.0.0.1:8080/
-docker rm -f platform-api-smoke
+docker rm -f test-api
 ```
 
 This is an automated **smoke test**, not a complete test suite or deployment
